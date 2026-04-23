@@ -614,15 +614,29 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Rajdha
 const SCOPES='https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/youtube.readonly';
 let token=null, currentDays=7, charts={}, refreshTimer=null;
 
-// BOOT
+// BOOT — check OAuth redirect hash FIRST
 window.onload=()=>{
-  const cid=localStorage.getItem('yt_cid');
-  if(!cid){showAuthContainer('setup');}
-  else{
-    const t=sessionStorage.getItem('yt_tok');
-    if(t){token=t;initApp();}
-    else{loadGSI(cid);}
+  const hash=window.location.hash;
+  if(hash&&hash.includes("access_token")){
+    const params=new URLSearchParams(hash.slice(1));
+    const t=params.get("access_token");
+    if(t){
+      token=t;
+      sessionStorage.setItem("yt_tok",t);
+      history.replaceState(null,null,window.location.pathname);
+      hide("loading-overlay");
+      hide("auth-container");
+      show("main-app");
+      initApp();
+      return;
+    }
   }
+  const saved=sessionStorage.getItem("yt_tok");
+  if(saved){token=saved;hide("loading-overlay");hide("auth-container");show("main-app");initApp();return;}
+  const cid=localStorage.getItem("yt_cid");
+  hide("loading-overlay");
+  if(!cid){showAuthContainer("setup");}
+  else{showAuthContainer("auth");}
 };
 
 function showAuthContainer(step){
