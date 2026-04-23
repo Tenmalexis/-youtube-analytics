@@ -648,20 +648,35 @@ function resetSetup(){
 
 function loadGSI(cid){
   showAuthContainer('auth');
-  const s=document.createElement('script');
-  s.src='https://accounts.google.com/gsi/client';
-  s.onload=()=>{
-    window._tokenClient=google.accounts.oauth2.initTokenClient({
-      client_id:cid,scope:SCOPES,
-      callback:(r)=>{if(r.error){showErr('auth-err','Erreur auth: '+r.error);return;}token=r.access_token;sessionStorage.setItem('yt_tok',token);hide('auth-container');initApp();},
-      error_callback:(e)=>{showErr('auth-err','Erreur: '+e.type);}
-    });
-  };
-  s.onerror=()=>showErr('auth-err','Impossible de charger Google API');
-  document.head.appendChild(s);
+  // Vérifier si on revient d'un redirect OAuth (hash fragment)
+  const hash=window.location.hash;
+  if(hash&&hash.includes('access_token')){
+    const params=new URLSearchParams(hash.slice(1));
+    const t=params.get('access_token');
+    if(t){
+      token=t;
+      sessionStorage.setItem('yt_tok',t);
+      history.replaceState(null,null,' ');
+      hide('auth-container');
+      initApp();
+      return;
+    }
+  }
 }
 
-function startAuth(){window._tokenClient.requestAccessToken({prompt:'select_account'});}
+function startAuth(){
+  const cid=localStorage.getItem('yt_cid');
+  const redirectUri=window.location.href.split('#')[0];
+  const params=new URLSearchParams({
+    client_id:cid,
+    redirect_uri:redirectUri,
+    response_type:'token',
+    scope:SCOPES,
+    prompt:'select_account',
+    include_granted_scopes:'true'
+  });
+  window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+params.toString();
+}
 
 function logout(){
   token=null;sessionStorage.removeItem('yt_tok');
