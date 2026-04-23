@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+// Capture le hash OAuth et le stocke avant la redirection
+var hash = window.location.hash;
+if (hash && hash.includes('access_token')) {
+  sessionStorage.setItem('oauth_hash', hash);
+}
+// Redirige vers la page principale
+window.location.replace(
+  'https://tenmalexis.github.io/-youtube-analytics/'
+);
+</script>
+</head>
+<body></body>
+</html>
