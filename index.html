@@ -614,35 +614,48 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Rajdha
 const SCOPES='https://www.googleapis.com/auth/yt-analytics.readonly https://www.googleapis.com/auth/youtube.readonly';
 let token=null, currentDays=7, charts={}, refreshTimer=null;
 
-// BOOT — check OAuth redirect hash FIRST
-window.onload=()=>{
-  // 1. Hash direct sur cette page ?
-  var hash=window.location.hash;
-  // 2. Hash capturé par 404.html ?
-  if(!hash||!hash.includes("access_token")){
-    hash=sessionStorage.getItem("oauth_hash")||"";
-    if(hash) sessionStorage.removeItem("oauth_hash");
-  }
-  if(hash&&hash.includes("access_token")){
-    var params=new URLSearchParams(hash.slice(1));
-    var t=params.get("access_token");
-    if(t){
-      token=t;
-      sessionStorage.setItem("yt_tok",t);
-      history.replaceState(null,null,window.location.pathname);
-      hide("loading-overlay");
-      hide("auth-container");
-      show("main-app");
-      initApp();
-      return;
+// PKCE helpers
+async function sha256(plain){const d=new TextEncoder().encode(plain);return await crypto.subtle.digest('SHA-256',d);}
+function b64url(a){return btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');}
+async function genPKCE(){const v=b64url(crypto.getRandomValues(new Uint8Array(32)));const c=b64url(await sha256(v));return{v,c};}
+
+// BOOT — PKCE flow: check ?code= param first
+window.onload=async()=>{
+  // 1. Retour OAuth PKCE ? (?code=...)
+  const urlParams=new URLSearchParams(window.location.search);
+  const code=urlParams.get('code');
+  if(code){
+    const verifier=sessionStorage.getItem('pkce_verifier');
+    const cid=localStorage.getItem('yt_cid');
+    const redirectUri=window.location.origin+window.location.pathname;
+    if(verifier&&cid){
+      try{
+        const resp=await fetch('https://oauth2.googleapis.com/token',{
+          method:'POST',
+          headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:new URLSearchParams({code,client_id:cid,redirect_uri:redirectUri,grant_type:'authorization_code',code_verifier:verifier})
+        });
+        const data=await resp.json();
+        if(data.access_token){
+          token=data.access_token;
+          sessionStorage.setItem('yt_tok',token);
+          if(data.refresh_token) sessionStorage.setItem('yt_refresh',data.refresh_token);
+          history.replaceState(null,null,window.location.pathname);
+          hide('loading-overlay');hide('auth-container');show('main-app');
+          initApp();return;
+        } else { showErr('auth-err','Erreur token: '+(data.error||'inconnue')); }
+      }catch(e){showErr('auth-err','Erreur réseau: '+e.message);}
     }
+    history.replaceState(null,null,window.location.pathname);
   }
-  var saved=sessionStorage.getItem("yt_tok");
-  if(saved){token=saved;hide("loading-overlay");hide("auth-container");show("main-app");initApp();return;}
-  var cid=localStorage.getItem("yt_cid");
-  hide("loading-overlay");
-  if(!cid){showAuthContainer("setup");}
-  else{showAuthContainer("auth");}
+  // 2. Token en session ?
+  const saved=sessionStorage.getItem('yt_tok');
+  if(saved){token=saved;hide('loading-overlay');hide('auth-container');show('main-app');initApp();return;}
+  // 3. Auth requise
+  const cid=localStorage.getItem('yt_cid');
+  hide('loading-overlay');
+  if(!cid){showAuthContainer('setup');}
+  else{showAuthContainer('auth');}
 };
 
 function showAuthContainer(step){
@@ -666,34 +679,23 @@ function resetSetup(){
   document.getElementById('step-setup').style.display='';
 }
 
-function loadGSI(cid){
-  showAuthContainer('auth');
-  // Vérifier si on revient d'un redirect OAuth (hash fragment)
-  const hash=window.location.hash;
-  if(hash&&hash.includes('access_token')){
-    const params=new URLSearchParams(hash.slice(1));
-    const t=params.get('access_token');
-    if(t){
-      token=t;
-      sessionStorage.setItem('yt_tok',t);
-      history.replaceState(null,null,' ');
-      hide('auth-container');
-      initApp();
-      return;
-    }
-  }
-}
+function loadGSI(cid){ showAuthContainer('auth'); }
 
-function startAuth(){
+async function startAuth(){
   const cid=localStorage.getItem('yt_cid');
-  const redirectUri=window.location.href.split('#')[0];
+  if(!cid){showAuthContainer('setup');return;}
+  const {v,c}=await genPKCE();
+  sessionStorage.setItem('pkce_verifier',v);
+  const redirectUri=window.location.origin+window.location.pathname;
   const params=new URLSearchParams({
     client_id:cid,
     redirect_uri:redirectUri,
-    response_type:'token',
+    response_type:'code',
     scope:SCOPES,
+    code_challenge:c,
+    code_challenge_method:'S256',
     prompt:'select_account',
-    include_granted_scopes:'true'
+    access_type:'offline'
   });
   window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+params.toString();
 }
