@@ -616,10 +616,16 @@ let token=null, currentDays=7, charts={}, refreshTimer=null;
 
 // BOOT — check OAuth redirect hash FIRST
 window.onload=()=>{
-  const hash=window.location.hash;
+  // 1. Hash direct sur cette page ?
+  var hash=window.location.hash;
+  // 2. Hash capturé par 404.html ?
+  if(!hash||!hash.includes("access_token")){
+    hash=sessionStorage.getItem("oauth_hash")||"";
+    if(hash) sessionStorage.removeItem("oauth_hash");
+  }
   if(hash&&hash.includes("access_token")){
-    const params=new URLSearchParams(hash.slice(1));
-    const t=params.get("access_token");
+    var params=new URLSearchParams(hash.slice(1));
+    var t=params.get("access_token");
     if(t){
       token=t;
       sessionStorage.setItem("yt_tok",t);
@@ -631,9 +637,9 @@ window.onload=()=>{
       return;
     }
   }
-  const saved=sessionStorage.getItem("yt_tok");
+  var saved=sessionStorage.getItem("yt_tok");
   if(saved){token=saved;hide("loading-overlay");hide("auth-container");show("main-app");initApp();return;}
-  const cid=localStorage.getItem("yt_cid");
+  var cid=localStorage.getItem("yt_cid");
   hide("loading-overlay");
   if(!cid){showAuthContainer("setup");}
   else{showAuthContainer("auth");}
